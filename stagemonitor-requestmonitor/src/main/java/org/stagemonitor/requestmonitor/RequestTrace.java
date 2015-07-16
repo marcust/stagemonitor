@@ -1,5 +1,10 @@
 package org.stagemonitor.requestmonitor;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.util.Date;
+import java.util.UUID;
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -10,11 +15,6 @@ import org.stagemonitor.core.Stagemonitor;
 import org.stagemonitor.core.util.JsonUtils;
 import org.stagemonitor.core.util.StringUtils;
 import org.stagemonitor.requestmonitor.profiler.CallStackElement;
-
-import java.io.PrintWriter;
-import java.io.StringWriter;
-import java.util.Date;
-import java.util.UUID;
 
 /**
  * A request trace is a data structure containing all the important information about a request.
@@ -278,5 +278,10 @@ public class RequestTrace {
 		 * @return the name of the request. For Example 'Show Item Details'.
 		 */
 		String getName();
+	}
+
+	@Override
+	public void finalize() {
+		callStack.recycle();
 	}
 }

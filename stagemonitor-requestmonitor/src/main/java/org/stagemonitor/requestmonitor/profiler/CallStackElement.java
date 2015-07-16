@@ -1,10 +1,12 @@
 package org.stagemonitor.requestmonitor.profiler;
 
+import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Queue;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
@@ -25,12 +27,19 @@ public class CallStackElement {
 	private long executionTime;
 	private List<CallStackElement> children = new LinkedList<CallStackElement>();
 
-	public CallStackElement(String signature) {
-		this(null, signature);
+	private static ThreadLocal<Queue<CallStackElement>> objectPool = new ThreadLocal<Queue<CallStackElement>>() {
+		@Override
+		protected Queue<CallStackElement> initialValue() {
+			return new LimitedQueue<CallStackElement>(10000);
+		}
+	};
+
+	public static CallStackElement createParent(String signature) {
+		return CallStackElement.create(null, signature, System.nanoTime());
 	}
 
-	public CallStackElement(CallStackElement parent, String signature) {
-		this(parent, signature, System.nanoTime());
+	public static CallStackElement create(CallStackElement parent, String signature) {
+		return CallStackElement.create(parent, signature, System.nanoTime());
 	}
 
 	/**
@@ -38,13 +47,31 @@ public class CallStackElement {
 	 * @param parent the parent
 	 * @param startTimestamp the timestamp at the beginning of the method
 	 */
-	public CallStackElement(CallStackElement parent, String signature, long startTimestamp) {
-		executionTime = startTimestamp;
-		this.signature = signature;
-		if (parent != null) {
-			this.parent = parent;
-			parent.getChildren().add(this);
+	public static CallStackElement create(CallStackElement parent, String signature, long startTimestamp) {
+		final Queue<CallStackElement> pool = objectPool.get();
+		CallStackElement cse = pool.poll();
+		if (cse == null) {
+			cse = new CallStackElement();
 		}
+
+		cse.executionTime = startTimestamp;
+		cse.signature = signature;
+		if (parent != null) {
+			cse.parent = parent;
+			parent.children.add(cse);
+		}
+		return cse;
+	}
+
+	public void recycle() {
+		parent = null;
+		signature = null;
+		executionTime = 0;
+		for (CallStackElement child : children) {
+			child.recycle();
+		}
+		children.clear();
+		objectPool.get().add(this);
 	}
 
 	public void removeCallsFasterThan(long thresholdNs) {
@@ -250,4 +277,19 @@ public class CallStackElement {
 	private boolean isRoot() {
 		return parent == null;
 	}
+
+	private static class LimitedQueue<T> extends ArrayDeque<T> {
+		private final int limit;
+
+		private LimitedQueue(int limit) {
+			super(limit);
+			this.limit = limit;
+		}
+
+		@Override
+		public boolean add(T t) {
+			return size() != limit && super.add(t);
+		}
+	}
+
 }
